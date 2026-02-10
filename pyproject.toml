@@ -16,6 +16,7 @@ dependencies = [
     "polymarket-py>=0.1.0",
     "pyarrow>=18.0.0",
     "scipy>=1.13.1",
+    "scikit-learn>=1.5.2",
     "squarify>=0.4.4",
     "tenacity>=8.0.0",
     "tqdm>=4.67.1",
