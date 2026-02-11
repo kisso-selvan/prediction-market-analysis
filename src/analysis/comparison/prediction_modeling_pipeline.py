@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
@@ -30,6 +30,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.common.analysis import Analysis, AnalysisOutput
+
+os.environ.setdefault("MPLBACKEND", "Agg")
+import matplotlib.pyplot as plt  # noqa: E402
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -297,8 +300,13 @@ class PredictionModelingPipelineAnalysis(Analysis):
         column_names = [c["name"] for c in columns]
 
         row_count = int(con.execute(f"SELECT COUNT(*) FROM '{glob_path}'").fetchone()[0])
-        time_column = self._pick_first(column_names, ["created_time", "close_time", "open_time", "end_date", "created_at", "timestamp", "_fetched_at"])
-        id_column = self._pick_first(column_names, ["ticker", "id", "condition_id", "trade_id", "transaction_hash", "block_number"])
+        time_column = self._pick_first(
+            column_names,
+            ["created_time", "close_time", "open_time", "end_date", "created_at", "timestamp", "_fetched_at"],
+        )
+        id_column = self._pick_first(
+            column_names, ["ticker", "id", "condition_id", "trade_id", "transaction_hash", "block_number"]
+        )
 
         min_time = None
         max_time = None
@@ -309,15 +317,14 @@ class PredictionModelingPipelineAnalysis(Analysis):
 
         unique_ids = None
         if id_column:
-            unique_ids = int(con.execute(f"SELECT COUNT(DISTINCT {self._qid(id_column)}) FROM '{glob_path}'").fetchone()[0])
+            unique_ids = int(
+                con.execute(f"SELECT COUNT(DISTINCT {self._qid(id_column)}) FROM '{glob_path}'").fetchone()[0]
+            )
 
         missing_cols = column_names[: min(18, len(column_names))]
         if row_count > 0 and missing_cols:
             missing_expr = ", ".join(
-                [
-                    f"AVG(CASE WHEN {self._qid(c)} IS NULL THEN 1.0 ELSE 0.0 END) AS {self._qid(c)}"
-                    for c in missing_cols
-                ]
+                [f"AVG(CASE WHEN {self._qid(c)} IS NULL THEN 1.0 ELSE 0.0 END) AS {self._qid(c)}" for c in missing_cols]
             )
             miss_row = con.execute(f"SELECT {missing_expr} FROM '{glob_path}'").fetchone()
             missingness = {missing_cols[i]: float(miss_row[i] or 0.0) for i in range(len(missing_cols))}
@@ -328,7 +335,9 @@ class PredictionModelingPipelineAnalysis(Analysis):
         if dataset_name == "trades":
             for entity_col in ["ticker", "id", "maker", "taker", "trader"]:
                 if entity_col in column_names:
-                    val = int(con.execute(f"SELECT COUNT(DISTINCT {self._qid(entity_col)}) FROM '{glob_path}'").fetchone()[0])
+                    val = int(
+                        con.execute(f"SELECT COUNT(DISTINCT {self._qid(entity_col)}) FROM '{glob_path}'").fetchone()[0]
+                    )
                     missingness[f"distinct_{entity_col}"] = float(val)
 
         return DatasetProfile(
@@ -679,7 +688,9 @@ class PredictionModelingPipelineAnalysis(Analysis):
 
         return movement_df
 
-    def _run_movement_models(self, movement_df: pd.DataFrame) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    def _run_movement_models(
+        self, movement_df: pd.DataFrame
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
         if movement_df.empty or movement_df.shape[0] < 500:
             return [], []
 
@@ -758,7 +769,9 @@ class PredictionModelingPipelineAnalysis(Analysis):
             zero_pred = np.zeros_like(y_test_r)
 
             metrics_rows.extend(
-                self._regression_metrics(y_test_r, zero_pred, "kalshi", "movement_return", int(horizon), "baseline_zero")
+                self._regression_metrics(
+                    y_test_r, zero_pred, "kalshi", "movement_return", int(horizon), "baseline_zero"
+                )
             )
             metrics_rows.extend(
                 self._regression_metrics(y_test_r, ridge_pred, "kalshi", "movement_return", int(horizon), "ridge")
@@ -846,7 +859,9 @@ class PredictionModelingPipelineAnalysis(Analysis):
                 )
             )
             metrics_rows.extend(
-                self._classification_metrics(y_test_c, logit_p, "kalshi", "movement_direction", int(horizon), "logistic")
+                self._classification_metrics(
+                    y_test_c, logit_p, "kalshi", "movement_direction", int(horizon), "logistic"
+                )
             )
             metrics_rows.extend(
                 self._classification_metrics(
@@ -1088,7 +1103,9 @@ class PredictionModelingPipelineAnalysis(Analysis):
         ax.set_title("Outcome Model Feature Importance (Permutation)")
         ax.set_xlabel("Mean decrease in AUC")
         fig.tight_layout()
-        fig.savefig(self.output_dir / "prediction_modeling_outcome_feature_importance.png", dpi=300, bbox_inches="tight")
+        fig.savefig(
+            self.output_dir / "prediction_modeling_outcome_feature_importance.png", dpi=300, bbox_inches="tight"
+        )
         plt.close(fig)
 
     def _classification_metrics(
@@ -1222,11 +1239,15 @@ class PredictionModelingPipelineAnalysis(Analysis):
         test_df = df[~df[market_col].isin(train_markets)].copy()
         return train_df, test_df
 
-    def _write_summary_md(self, kalshi_profile: dict[str, object], polymarket_profile: dict[str, object], metrics_df: pd.DataFrame):
+    def _write_summary_md(
+        self, kalshi_profile: dict[str, object], polymarket_profile: dict[str, object], metrics_df: pd.DataFrame
+    ):
         summary_path = self.output_dir / "summary.md"
 
         if metrics_df.empty:
-            metrics_text = "No model metrics produced. Data was missing or insufficient for leakage-safe train/test splits."
+            metrics_text = (
+                "No model metrics produced. Data was missing or insufficient for leakage-safe train/test splits."
+            )
         else:
             top = (
                 metrics_df.sort_values(["target", "horizon_hours", "metric", "value"])
@@ -1249,8 +1270,8 @@ class PredictionModelingPipelineAnalysis(Analysis):
 - No post-resolution columns are used in feature construction.
 
 ## Data Used
-- Kalshi datasets available: {', '.join(kalshi_profile.get('datasets_available', [])) or 'none'}
-- Polymarket datasets available: {', '.join(polymarket_profile.get('datasets_available', [])) or 'none'}
+- Kalshi datasets available: {", ".join(kalshi_profile.get("datasets_available", [])) or "none"}
+- Polymarket datasets available: {", ".join(polymarket_profile.get("datasets_available", [])) or "none"}
 
 ## Key Metrics (Best-by-group table)
 {metrics_text}
